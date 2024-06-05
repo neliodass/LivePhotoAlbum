@@ -1,5 +1,6 @@
 package com.example.livealbum
 
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -9,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,23 +34,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.livealbum.ui.theme.LiveAlbumTheme
-import com.example.livealbum.images
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
+        setRequestedOrientation (ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
         super.onCreate(savedInstanceState)
         setContent {
             LiveAlbumTheme {
@@ -66,39 +69,70 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun VideoPlayer(rawResourceId:Int) {
-    val uri = Uri.parse("android.resource://com.example.livealbum/$rawResourceId")
-    var isPlaying by remember{mutableStateOf(false)}
-    Surface(color = Color.White,
+fun VideoPlayer(rawResourceId: Int) {
+    val uri = Uri.parse("android.resource://com.example.livealbum/raw/$rawResourceId")
+    var isPlaying by remember { mutableStateOf(false) }
+    var hasPaused by remember { mutableStateOf(false) }
+
+    Surface(
+        color = Color.White,
         modifier = Modifier
             .padding(20.dp)
-            .clickable { isPlaying = isPlaying.not() }
+            .background(color = Color.White)
+            .pointerInput(Unit) {
+                coroutineScope {
+                    launch {
+                        while (true) {
+                            awaitPointerEventScope {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { it.pressed }) {
+                                    isPlaying = true
+                                    hasPaused = false
+                                } else {
+                                    isPlaying = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
     ) {
         AndroidView(
-            modifier =Modifier.background(color = Color.White),
-
+            modifier = Modifier.background(color = Color.White),
             factory = { context ->
-
                 val videoView = VideoView(context)
                 videoView.setVideoURI(uri)
                 videoView.setOnPreparedListener { mediaPlayer ->
-                    mediaPlayer.isLooping = false
                     mediaPlayer.seekTo(1)
                     mediaPlayer.setVolume(0.3f, 0.3f)
                     if (isPlaying) {
                         mediaPlayer.start()
                     }
-                    }
-                videoView.setOnCompletionListener {
-                    mediaPlayer->
+                }
+                videoView.setOnCompletionListener { mediaPlayer ->
                     mediaPlayer.seekTo(1)
                     isPlaying = false
                 }
                 videoView
-            }, update = { videoView ->
-                videoView.setVideoURI(uri)
-                if (isPlaying && !videoView.isPlaying) {
-                    videoView.start()
+            },
+            update = { videoView ->
+                if (videoView.tag != uri.toString()) {
+                    videoView.setVideoURI(uri)
+                    videoView.tag = uri.toString()
+                }
+                if (isPlaying) {
+                    if (!videoView.isPlaying) {
+                        videoView.start()
+                    }
+                } else {
+                    if (videoView.isPlaying) {
+                        videoView.pause()
+                        hasPaused = true
+                    }
+                    if (hasPaused) {
+                        videoView.seekTo(1)
+                        hasPaused = false
+                    }
                 }
             }
         )
@@ -112,7 +146,7 @@ fun ImageDisplayer(videoClip: Int){
     )
     {
         Image(
-            painterResource(R.drawable.img_sample),
+            painterResource(videoClip),
             null
         )
     }
@@ -173,6 +207,25 @@ fun PhotoDescription(modifier:Modifier=Modifier,videoTitle:String,videoPlace:Str
 
 }
 @Composable
+fun LiveIndicator(){
+    Surface(
+        color = Color(0xffc4c4c4),
+        modifier = Modifier
+            .padding(top = 25.dp),
+        shape = RoundedCornerShape(10.dp)
+        ){
+        Row(
+            modifier = Modifier
+            .padding(top = 4.dp, bottom = 4.dp,start = 8.dp,end = 8.dp)
+        ){
+            Text("Live")
+            Spacer(modifier = Modifier
+                .width(10.dp))
+            Icon(painterResource(id = R.drawable.stream),contentDescription = null)
+        }
+    }
+}
+@Composable
 fun NavigationButtons(prevLambda:()->Unit,nextLambda:()->Unit){
     val buttonModifier = Modifier
         .padding(10.dp)
@@ -201,7 +254,7 @@ fun NavigationButtons(prevLambda:()->Unit,nextLambda:()->Unit){
 @Composable
 fun LivePhotoAlbumApp(){
     var clipNumber by remember {
-        mutableIntStateOf(0)
+        mutableIntStateOf(1)
     }
     val videoClip = images[clipNumber].resource
     val videoTitle = images[clipNumber].description
@@ -216,7 +269,10 @@ fun LivePhotoAlbumApp(){
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Bottom
 
-    ) {
+    )
+    {
+
+        if (isLive) LiveIndicator()
 
         Column(modifier= Modifier
             .weight(0.75f)

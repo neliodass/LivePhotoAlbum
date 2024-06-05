@@ -20,7 +20,7 @@ val images = listOf(
     LiveImage(
         2,
         false,
-        R.raw.sample_video,
+        R.drawable.img_sample,
         "Laptop on the desk",
         "Living room",
         LocalDate.parse("2019-06-15")
