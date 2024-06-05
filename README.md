@@ -5,5 +5,5 @@ Photo album app with similiar to Ios Live Photo feature for mov files.
 - Auto detection for standard photos and motion photos
 - Similiar to Live Photo experience after long press
 ## How it looks
-![screenshot](app_screenshot.png)
-![screenshot](app_screenshot2.png)
+![screenshot](app_gif.gif)
+
